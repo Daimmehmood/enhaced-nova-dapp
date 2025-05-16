@@ -14,7 +14,8 @@ const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
  * @returns {boolean} - Whether the API key is available
  */
 export const isOpenAIAvailable = () => {
-  return !!OPENAI_API_KEY && OPENAI_API_KEY.startsWith('sk-') && OPENAI_API_KEY.length > 20;
+  const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+  return !!OPENAI_API_KEY && OPENAI_API_KEY.length > 20;
 };
 
 /**

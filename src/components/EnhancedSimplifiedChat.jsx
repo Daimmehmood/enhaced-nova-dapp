@@ -1,4 +1,4 @@
-// src/components/EnhancedSimplifiedChat.jsx
+// src/components/EnhancedSimplifiedChat.jsx - Create an improved version with working OpenAI integration and dynamic buttons
 import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -15,10 +15,10 @@ import {
   FaArrowDown
 } from 'react-icons/fa';
 import { useCharacter } from '../context/CharacterContextFix';
+import OPENAI_CONFIG from '../config/openaiConfig';
 
 // Import API services
-import { processNovaEnhancedMessage } from '../services/novaAIService';
-import { getComprehensiveTokenAnalysis, getTechnicalIndicators } from '../services/cryptoApiService';
+import { getComprehensiveTokenAnalysis } from '../services/cryptoApiService';
 import { isOpenAIAvailable } from '../services/aiAnalysisService';
 
 // Styled components from the original implementation
@@ -374,7 +374,6 @@ const ErrorMessage = styled.div`
   }
 `;
 
-// Enhanced Simplified Chat with real API capability
 const EnhancedSimplifiedChat = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -383,12 +382,12 @@ const EnhancedSimplifiedChat = () => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [cryptoSuggestions, setCryptoSuggestions] = useState(['BTC', 'ETH', 'SOL', 'MATIC', 'AVAX']);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [activeToken, setActiveToken] = useState('BTC');
   const [apiStatus, setApiStatus] = useState({
     openai: false,
     coingecko: false
   });
-  const [useRealAPI, setUseRealAPI] = useState(true);
   const [error, setError] = useState(null);
   
   const messagesEndRef = useRef(null);
@@ -429,22 +428,19 @@ const EnhancedSimplifiedChat = () => {
         openai: openaiAvailable,
         coingecko: coingeckoAvailable
       });
-      
-      // Set real API usage based on availability
-      setUseRealAPI(openaiAvailable || coingeckoAvailable);
     };
     
     checkApis();
   }, []);
   
-  // Scroll to bottom when messages change
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
-    if (shouldAutoScroll) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (shouldAutoScroll && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, shouldAutoScroll]);
+  }, [messages, isTyping, shouldAutoScroll]);
   
-  // Add event listener to detect when user scrolls manually
+  // Add scroll event listener
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
@@ -467,11 +463,70 @@ const EnhancedSimplifiedChat = () => {
     return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
   
-  // Send message handler - with real API support
-  const handleSendMessage = async () => {
-    if (!input.trim()) return;
+  // Process user message using OpenAI
+  const processWithOpenAI = async (message, chatHistory) => {
+    try {
+      // Check if OpenAI API is available
+      if (!OPENAI_CONFIG.apiKey) {
+        throw new Error("OpenAI API key not configured");
+      }
+      
+      // Format messages for OpenAI
+      const messages = [
+        { 
+          role: "system", 
+          content: `You are Nova, an advanced cryptocurrency analyst AI with expertise in technical analysis, fundamentals, and market behavior. Your analysis is data-driven, precise, and insightful. Current date: ${new Date().toISOString().split('T')[0]}`
+        },
+        ...chatHistory.slice(-5).map(msg => ({
+          role: msg.isUser ? "user" : "assistant",
+          content: msg.content
+        })),
+        { role: "user", content: message }
+      ];
+      
+      // Call OpenAI API
+      const response = await OPENAI_CONFIG.createChatCompletion(messages, {
+        temperature: 0.3,
+        maxTokens: 800
+      });
+      
+      return response.choices[0].message.content;
+    } catch (error) {
+      console.error("Error with OpenAI:", error);
+      throw error;
+    }
+  };
+  
+  // Extract token from message
+  const extractTokenFromMessage = (message) => {
+    const lowerMessage = message.toLowerCase();
+    const commonCryptos = [
+      'bitcoin', 'btc', 'ethereum', 'eth', 'solana', 'sol', 'cardano', 'ada',
+      'ripple', 'xrp', 'polkadot', 'dot', 'doge', 'dogecoin', 'shib', 'shiba',
+      'bnb', 'usdt', 'tether', 'usdc', 'matic', 'polygon', 'avax', 'avalanche'
+    ];
     
-    // Reset error state
+    // Check for common cryptos in the message
+    for (const crypto of commonCryptos) {
+      if (lowerMessage.includes(crypto)) {
+        return crypto;
+      }
+    }
+    
+    // Check for analyze pattern
+    const analyzeMatch = lowerMessage.match(/analyze\s+([a-z0-9]+)/i);
+    if (analyzeMatch && analyzeMatch[1]) {
+      return analyzeMatch[1];
+    }
+    
+    return null;
+  };
+  
+  // Send message handler
+  const handleSendMessage = async () => {
+    if (!input.trim() || isProcessing) return;
+    
+    setIsProcessing(true);
     setError(null);
     
     // Add user message
@@ -487,249 +542,167 @@ const EnhancedSimplifiedChat = () => {
     setInput('');
     setIsTyping(true);
     
-    // Try to get real API response if available
-    if (useRealAPI && (apiStatus.openai || apiStatus.coingecko)) {
-      try {
-        // Use novaAIService if available (which internally uses OpenAI)
-        if (apiStatus.openai) {
-          // Format chat history for the AI
-          const chatHistory = messages.map(msg => ({
-            content: msg.content,
-            isUser: msg.isUser
-          }));
-          
-          // Process with enhanced Nova AI
-          const aiResponse = await processNovaEnhancedMessage(input.trim(), chatHistory);
-          
-          // Add AI response
-          const novaResponse = {
-            id: Date.now() + 1,
-            content: aiResponse.content,
-            sender: character?.name || 'Nova',
-            isUser: false,
-            time: formatTime(),
-            analysisType: aiResponse.analysisType || 'general',
-            token: aiResponse.token || null
-          };
-          
-          setMessages(prev => [...prev, novaResponse]);
-          
-          // Update suggestions if token was analyzed
-          if (aiResponse.token && !cryptoSuggestions.includes(aiResponse.token.toUpperCase())) {
-            setCryptoSuggestions(prev => [
-              aiResponse.token.toUpperCase(),
-              ...prev.slice(0, 4)
-            ]);
-          }
-          
-          setIsTyping(false);
-          return;
-        }
-        
-        // If OpenAI not available but CoinGecko is, try to get token data directly
-        if (apiStatus.coingecko) {
-          // Extract potential token to analyze
-          const potentialToken = extractTokenFromMessage(input);
-          
-          if (potentialToken) {
-            // Get real token data
-            const tokenData = await getComprehensiveTokenAnalysis(potentialToken);
-            
-            // Format the response with real data
-            const response = formatTokenAnalysisResponse(potentialToken, tokenData);
-            
-            // Add response
-            const novaResponse = {
-              id: Date.now() + 1,
-              content: response,
-              sender: character?.name || 'Nova',
-              isUser: false,
-              time: formatTime(),
-              analysisType: 'comprehensive',
-              token: potentialToken
-            };
-            
-            setMessages(prev => [...prev, novaResponse]);
-            
-            // Update suggestions
-            if (!cryptoSuggestions.includes(potentialToken.toUpperCase())) {
-              setCryptoSuggestions(prev => [
-                potentialToken.toUpperCase(),
-                ...prev.slice(0, 4)
-              ]);
-            }
-            
-            setIsTyping(false);
-            return;
-          }
-        }
-        
-        // If we reached here, fall back to mocked response
-        throw new Error("Falling back to mocked response");
-        
-      } catch (error) {
-        console.error('API request failed:', error);
-        
-        // Only set error if it's not a deliberate fallback
-        if (error.message !== "Falling back to mocked response") {
-          setError({
-            title: "API Request Failed",
-            message: `Error: ${error.message}. Falling back to simulated responses.`
-          });
-        }
-        
-        // Fall back to mocked responses
-        fallbackToMockedResponse(input);
+    // Format chat history for AI
+    const chatHistory = messages.map(msg => ({
+      content: msg.content,
+      isUser: msg.isUser
+    }));
+    
+    try {
+      let responseContent;
+      
+      // Extract potential token from message
+      const token = extractTokenFromMessage(input);
+      if (token) {
+        setActiveToken(token.toUpperCase());
       }
-    } else {
-      // Use mocked responses if APIs not available
-      fallbackToMockedResponse(input);
+      
+      // Try to process with OpenAI if available
+      if (apiStatus.openai) {
+        responseContent = await processWithOpenAI(input, chatHistory);
+      } else {
+        // Fallback to simplified response
+        if (token) {
+          try {
+            // Try to get token data
+            const tokenData = await getComprehensiveTokenAnalysis(token);
+            responseContent = generateTokenResponse(token, tokenData);
+          } catch (err) {
+            responseContent = `I'd love to analyze ${token}, but I'm currently unable to fetch real-time data. As a crypto analyst, I can tell you that ${token.toUpperCase()} is a significant digital asset that should be evaluated based on market cap, volume, development activity, and use case. Would you like me to discuss general crypto analysis approaches instead?`;
+          }
+        } else {
+          // General crypto response
+          responseContent = generateGeneralResponse(input);
+        }
+      }
+      
+      // Add AI response after a slight delay for natural feel
+      setTimeout(() => {
+        const novaResponse = {
+          id: Date.now() + 1,
+          content: responseContent,
+          sender: character?.name || 'Nova',
+          isUser: false,
+          time: formatTime()
+        };
+        
+        setMessages(prev => [...prev, novaResponse]);
+        setIsTyping(false);
+        setIsProcessing(false);
+      }, 1000 + Math.random() * 1000); // Random delay between 1-2s
+      
+    } catch (error) {
+      console.error('Error generating AI response:', error);
+      setError(error);
+      
+      // Add error message
+      setTimeout(() => {
+        const errorMessage = {
+          id: Date.now() + 1,
+          content: `I apologize, but I encountered an issue while processing your request: ${error.message}. Let me know if you'd like to try a different query.`,
+          sender: character?.name || 'Nova',
+          isUser: false,
+          time: formatTime(),
+          error: true
+        };
+        
+        setMessages(prev => [...prev, errorMessage]);
+        setIsTyping(false);
+        setIsProcessing(false);
+      }, 1000);
     }
   };
   
-  // Fallback to mocked responses
-  const fallbackToMockedResponse = (userInput) => {
-    // Extract potential token to analyze
-    const potentialToken = extractTokenFromMessage(userInput);
-    
-    // Simulate API delay
-    setTimeout(() => {
-      // Add Nova's response
-      const novaResponse = {
-        id: Date.now() + 1,
-        content: potentialToken ? getMockedTokenAnalysis(potentialToken) : getGeneralResponse(userInput),
-        sender: character?.name || 'Nova',
-        isUser: false,
-        time: formatTime()
-      };
-      
-      setMessages(prev => [...prev, novaResponse]);
-      setIsTyping(false);
-      
-      // Update suggestions if token was analyzed
-      if (potentialToken && !cryptoSuggestions.includes(potentialToken.toUpperCase())) {
-        setCryptoSuggestions(prev => [
-          potentialToken.toUpperCase(),
-          ...prev.slice(0, 4)
-        ]);
-      }
-    }, 1500 + Math.random() * 1000); // Random delay between 1.5-2.5s
-  };
-  
-  // Format token analysis with real data
-  const formatTokenAnalysisResponse = (token, data) => {
-    if (!data || (!data.coinGeckoData && !data.dexScreenerData)) {
-      return getMockedTokenAnalysis(token);
+  // Generate token response when APIs fail
+  const generateTokenResponse = (token, data) => {
+    if (!data) {
+      return `I couldn't find detailed data for ${token.toUpperCase()}, but as a crypto analyst, I can tell you it's important to evaluate it based on market fundamentals, technical patterns, and sentiment indicators. Would you like to know what metrics to consider when analyzing cryptocurrencies?`;
     }
     
-    const coinData = data.coinGeckoData;
-    const dexData = data.dexScreenerData;
+    const tokenInfo = data.coinGeckoData;
+    const dexInfo = data.dexScreenerData;
     
-    // Create a detailed response using real data
+    if (!tokenInfo && !dexInfo) {
+      return `I found some limited information about ${token.toUpperCase()}, but couldn't access comprehensive data. In general, when analyzing cryptocurrencies, I look at market cap, volume, developer activity, and technical indicators. Would you like me to explain my analysis methodology in more detail?`;
+    }
+    
     let response = `## ${token.toUpperCase()} Analysis\n\n`;
     
-    // Executive Summary
-    response += `**Executive Summary**: `;
-    if (coinData) {
-      response += `${coinData.name} (${coinData.symbol?.toUpperCase() || token.toUpperCase()}) is currently trading at $${coinData.currentPrice || 'N/A'}. `;
-      response += coinData.priceChangePercentage24h 
-        ? `It's ${coinData.priceChangePercentage24h >= 0 ? 'up' : 'down'} ${Math.abs(coinData.priceChangePercentage24h).toFixed(2)}% in the last 24 hours. `
-        : '';
-      response += coinData.marketCap 
-        ? `Market cap is $${formatLargeNumber(coinData.marketCap)}${coinData.marketCapRank ? ` (rank #${coinData.marketCapRank})` : ''}. `
-        : '';
+    if (tokenInfo) {
+      response += `**Market Overview**: ${tokenInfo.name} (${tokenInfo.symbol.toUpperCase()}) is currently trading at $${tokenInfo.currentPrice || 'N/A'}. `;
+      
+      if (tokenInfo.priceChangePercentage24h) {
+        response += `It's ${tokenInfo.priceChangePercentage24h >= 0 ? 'up' : 'down'} ${Math.abs(tokenInfo.priceChangePercentage24h).toFixed(2)}% in the last 24 hours. `;
+      }
+      
+      if (tokenInfo.marketCap) {
+        response += `Market cap is $${formatLargeNumber(tokenInfo.marketCap)}${tokenInfo.marketCapRank ? ` (rank #${tokenInfo.marketCapRank})` : ''}. `;
+      }
+      
+      response += '\n\n';
     }
     
-    if (dexData && dexData.mostLiquidPair) {
-      const pair = dexData.mostLiquidPair;
-      response += `Most liquid trading pair is on ${pair.dexId} with $${formatLargeNumber(pair.liquidity?.usd || 0)} liquidity. `;
-    }
-    
-    response += '\n\n';
-    
-    // Market Structure
-    response += `### Market Structure\n`;
-    if (coinData) {
-      response += coinData.marketCap ? `- **Market Cap**: $${formatLargeNumber(coinData.marketCap)}\n` : '';
-      response += coinData.totalVolume ? `- **24h Volume**: $${formatLargeNumber(coinData.totalVolume)}\n` : '';
-      response += coinData.marketCapRank ? `- **Market Rank**: #${coinData.marketCapRank}\n` : '';
-    }
-    
-    if (dexData && dexData.mostLiquidPair) {
-      const pair = dexData.mostLiquidPair;
-      response += pair.liquidity?.usd ? `- **Liquidity**: $${formatLargeNumber(pair.liquidity.usd)}\n` : '';
-      response += pair.volume?.h24 ? `- **DEX 24h Volume**: $${formatLargeNumber(pair.volume.h24)}\n` : '';
+    if (dexInfo && dexInfo.mostLiquidPair) {
+      const pair = dexInfo.mostLiquidPair;
+      response += `**DEX Info**: Most liquid trading pair is on ${pair.dexId} with $${formatLargeNumber(pair.liquidity?.usd || 0)} liquidity. `;
       
-      // Buy/sell ratio if available
-      if (pair.txns?.h24?.buys && pair.txns?.h24?.sells) {
-        const buyRatio = pair.txns.h24.buys / (pair.txns.h24.buys + pair.txns.h24.sells);
-        response += `- **Buy/Sell Ratio**: ${(buyRatio * 100).toFixed(1)}% buys / ${((1-buyRatio) * 100).toFixed(1)}% sells\n`;
+      if (pair.volume?.h24) {
+        response += `24h volume is $${formatLargeNumber(pair.volume.h24)}. `;
+      }
+      
+      if (pair.txns?.h24) {
+        const buyRatio = pair.txns.h24.buys / (pair.txns.h24.buys + pair.txns.h24.sells || 1);
+        response += `Buy/sell ratio is ${(buyRatio * 100).toFixed(1)}% buys to ${((1-buyRatio) * 100).toFixed(1)}% sells in the last 24 hours.`;
       }
     }
-    
-    response += '\n';
-    
-    // Technical indicators if available
-    if (data.marketChart && data.marketChart.prices) {
-      const technicalIndicators = getTechnicalIndicators(data.marketChart.prices);
-      
-      if (technicalIndicators) {
-        response += `### Technical Outlook\n`;
-        response += `- **Current Trend**: ${technicalIndicators.trend}\n`;
-        response += `- **RSI(14)**: ${technicalIndicators.rsi.value} - ${technicalIndicators.rsi.signal}\n`;
-        
-        if (technicalIndicators.supportResistance?.support?.length > 0) {
-          response += `- **Key Support**: $${technicalIndicators.supportResistance.support[0].price}\n`;
-        }
-        
-        if (technicalIndicators.supportResistance?.resistance?.length > 0) {
-          response += `- **Key Resistance**: $${technicalIndicators.supportResistance.resistance[0].price}\n`;
-        }
-        
-        if (technicalIndicators.macd) {
-          response += `- **MACD**: ${technicalIndicators.macd.trend} trend\n`;
-        }
-        
-        response += '\n';
-      }
-    }
-    
-    // Fundamental Assessment
-    if (coinData) {
-      response += `### Fundamental Assessment\n`;
-      
-      if (coinData.circulatingSupply) {
-        response += `- **Circulating Supply**: ${formatLargeNumber(coinData.circulatingSupply)}\n`;
-      }
-      
-      if (coinData.totalSupply) {
-        response += `- **Total Supply**: ${formatLargeNumber(coinData.totalSupply)}\n`;
-      }
-      
-      if (coinData.maxSupply) {
-        response += `- **Max Supply**: ${formatLargeNumber(coinData.maxSupply)}\n`;
-      }
-      
-      // All-time high/low
-      if (coinData.ath) {
-        response += `- **All-Time High**: $${coinData.ath} (${coinData.athChangePercentage ? coinData.athChangePercentage.toFixed(2) + '%' : 'N/A'} from ATH)\n`;
-      }
-      
-      // Developer activity if available
-      if (coinData.developerData?.commitCount4Weeks) {
-        response += `- **Developer Activity**: ${coinData.developerData.commitCount4Weeks} commits in last 4 weeks\n`;
-      }
-      
-      response += '\n';
-    }
-    
-    // Conclusion
-    response += `This analysis represents educational information based on available data, not financial advice.`;
     
     return response;
   };
   
-  // Format large numbers for better readability
+  // Generate general response when no specific token is mentioned
+  const generateGeneralResponse = (message) => {
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
+      return `Hello! I'm Nova, your advanced crypto analyst. I can help you analyze any cryptocurrency, assess market trends, or explain technical indicators. Which token would you like to explore today?`;
+    }
+    
+    if (lowerMessage.includes('help') || lowerMessage.includes('what can you do')) {
+      return `I'm your crypto analysis assistant. Here's how I can help:
+
+1. **Token Analysis** - I can analyze any cryptocurrency by name or ticker (e.g., "Analyze Bitcoin" or "Tell me about ETH")
+2. **Technical Analysis** - I can evaluate price patterns and technical indicators (e.g., "Technical analysis for Solana")
+3. **Risk Assessment** - I can assess investment risks for any token (e.g., "What are the risks of holding BNB?")
+4. **Token Comparisons** - I can compare different cryptocurrencies (e.g., "Compare Bitcoin and Ethereum")
+
+You can also use the quick action buttons below for instant analysis of any token. Which aspect of crypto would you like to explore?`;
+    }
+    
+    if (lowerMessage.includes('market')) {
+      return `The cryptocurrency market is characterized by high volatility, 24/7 trading, and a diverse ecosystem of assets with varying use cases. When analyzing the market, I focus on several key metrics:
+
+1. **Bitcoin Dominance** - Currently around 45-55%, this indicates BTC's market share
+2. **Total Market Capitalization** - The combined value of all cryptocurrencies
+3. **Trading Volume** - Daily transaction volume across exchanges
+4. **Sector Rotation** - Capital flows between different crypto categories
+5. **Correlation Patterns** - How different assets move in relation to each other
+
+The market typically moves in cycles influenced by Bitcoin halving events, regulatory news, institutional adoption, and technological breakthroughs. Would you like me to analyze a specific aspect of the market in more detail?`;
+    }
+    
+    // Default response
+    return `I'm here to provide data-driven analysis of cryptocurrencies and blockchain projects. I can help you understand market trends, evaluate specific tokens, and assess investment opportunities from a risk-adjusted perspective. 
+
+To get the most value from our conversation, you can ask me to:
+- Analyze specific cryptocurrencies (e.g., "Analyze Bitcoin")
+- Explain technical concepts (e.g., "What is a liquidity pool?")
+- Evaluate trends (e.g., "DeFi growth trends")
+- Compare assets (e.g., "Compare ETH and SOL")
+
+What would you like to explore today?`;
+  };
+  
+  // Format large numbers for readability
   const formatLargeNumber = (num) => {
     if (num === null || num === undefined) return 'N/A';
     
@@ -746,58 +719,26 @@ const EnhancedSimplifiedChat = () => {
     }
   };
   
-  // Extract token from user message
-  const extractTokenFromMessage = (message) => {
-    // Common cryptocurrency names and tickers
-    const commonCryptos = [
-      'bitcoin', 'btc', 'ethereum', 'eth', 'solana', 'sol', 'cardano', 'ada',
-      'ripple', 'xrp', 'polkadot', 'dot', 'doge', 'dogecoin', 'shib', 'shiba',
-      'bnb', 'binance', 'usdt', 'tether', 'usdc', 'usd coin', 'matic', 'polygon',
-      'avax', 'avalanche', 'link', 'chainlink', 'uni', 'uniswap', 'cake', 'pancakeswap'
-    ];
-    
-    const lowerMessage = message.toLowerCase();
-    
-    // Check for explicit "analyze X" patterns
-    const analyzeMatch = lowerMessage.match(/analyze\s+([a-z0-9]+)/i);
-    if (analyzeMatch && analyzeMatch[1]) {
-      return analyzeMatch[1];
-    }
-    
-    // Check for common cryptos in the message
-    for (const crypto of commonCryptos) {
-      if (lowerMessage.includes(crypto)) {
-        return crypto;
-      }
-    }
-    
-    // No token found
-    return null;
-  };
-  
-  // Handle quick analysis of tokens
-  const handleQuickAnalysis = (token, analysisType = 'comprehensive') => {
-    if (!token) return;
+  // Handle quick action for token analysis
+  const handleQuickAnalysis = (analysisType = 'comprehensive') => {
+    if (isProcessing) return;
     
     // Generate appropriate prompt based on analysis type
     let prompt = '';
     switch (analysisType) {
       case 'technical':
-        prompt = `Analyze ${token} using technical analysis`;
-        break;
-      case 'fundamental':
-        prompt = `Provide fundamental analysis of ${token}`;
+        prompt = `Provide a technical analysis of ${activeToken}`;
         break;
       case 'risk':
-        prompt = `Assess the risk factors for ${token}`;
+        prompt = `What are the risks of investing in ${activeToken}?`;
         break;
       case 'comparison':
         // For comparison, pick another top token that's different
-        const compareToken = cryptoSuggestions.find(t => t !== token) || 'ETH';
-        prompt = `Compare ${token} and ${compareToken}`;
+        const compareToken = activeToken === 'BTC' ? 'ETH' : 'BTC';
+        prompt = `Compare ${activeToken} and ${compareToken}`;
         break;
       default:
-        prompt = `Analyze ${token}`;
+        prompt = `Analyze ${activeToken}`;
     }
     
     // Set input and send message
@@ -807,219 +748,30 @@ const EnhancedSimplifiedChat = () => {
     }, 100);
   };
   
-  // Mocked token analysis responses
-  const getMockedTokenAnalysis = (token) => {
-    // Mock data for common cryptocurrencies
-    const cryptoResponses = {
-      'bitcoin': `## Bitcoin (BTC) Analysis
-
-**Executive Summary**: Bitcoin has maintained its position as the leading cryptocurrency with strong institutional adoption trends. Current technical indicators suggest a neutral to slightly bullish outlook with key support established at $61,200.
-
-### Market Structure
-- **Market Cap**: $1.23 trillion
-- **24h Volume**: $42.3 billion
-- **Dominance**: 48.7% of total crypto market cap
-- **Liquidity**: Excellent depth across all major exchanges
-
-### Technical Outlook
-- RSI(14): 58.2 - neutral with room for upside
-- MACD: Bullish crossover forming on daily chart
-- Key Support: $61,200, $57,800, $52,400
-- Key Resistance: $69,000 (All-Time High), $72,500, $75,000
-
-### Fundamental Assessment
-Bitcoin's fundamentals remain strong with growing institutional adoption and continuing integration with traditional financial systems. On-chain metrics show accumulation patterns among long-term holders.
-
-This analysis represents educational information based on available data, not financial advice.`,
-      'ethereum': `## Ethereum (ETH) Analysis
-
-**Executive Summary**: Ethereum continues to dominate the smart contract platform space with its extensive developer ecosystem and dApp infrastructure. The network has successfully transitioned to Proof of Stake, significantly altering its economic model.
-
-### Market Structure
-- **Market Cap**: $427.8 billion
-- **24h Volume**: $18.2 billion
-- **TVL in DeFi**: $142.6 billion
-- **Liquidity**: Excellent depth across all major exchanges
-
-### Technical Outlook
-- RSI(14): 62.5 - approaching overbought but still bullish
-- MACD: Positive with histogram expanding
-- Key Support: $3,480, $3,250, $2,950
-- Key Resistance: $3,800, $4,000, $4,380 (All-Time High)
-
-### Fundamental Assessment
-Ethereum's transition to Proof of Stake has reduced energy consumption by ~99.95% and introduced a deflationary mechanism during periods of high network activity. Layer-2 scaling solutions continue to gain traction, addressing throughput limitations.
-
-This analysis represents educational information based on available data, not financial advice.`,
-      'solana': `## Solana (SOL) Analysis
-
-**Executive Summary**: Solana has established itself as a high-performance blockchain with emphasis on speed and low transaction costs. Despite past reliability issues, it has maintained a robust ecosystem particularly in NFTs and DeFi.
-
-### Market Structure
-- **Market Cap**: $72.4 billion
-- **24h Volume**: $3.8 billion
-- **TVL**: $8.2 billion
-- **Liquidity**: Good depth on major exchanges
-
-### Technical Outlook
-- RSI(14): 48.3 - neutral
-- MACD: Slightly bearish with potential for reversal
-- Key Support: $118, $105, $92
-- Key Resistance: $142, $158, $172
-
-### Fundamental Assessment
-Solana's technical architecture prioritizes performance through innovations like Turbine block propagation and Gulf Stream mempool management. Challenges remain with validator decentralization and occasional network congestion.
-
-This analysis represents educational information based on available data, not financial advice.`
-    };
-    
-    // Convert to lowercase for case-insensitive matching
-    const tokenLower = token.toLowerCase();
-    
-    // Check for exact matches
-    if (cryptoResponses[tokenLower]) {
-      return cryptoResponses[tokenLower];
-    }
-    
-    // Check for partial matches
-    for (const key in cryptoResponses) {
-      if (tokenLower.includes(key) || key.includes(tokenLower)) {
-        return cryptoResponses[key];
-      }
-    }
-    
-    // Default response for unknown tokens
-    return `## ${token.toUpperCase()} Analysis
-
-**Executive Summary**: Based on available data, ${token.toUpperCase()} appears to be a ${Math.random() > 0.5 ? 'smaller cap' : 'mid-tier'} cryptocurrency. Limited market data suggests a ${Math.random() > 0.5 ? 'moderately volatile' : 'highly speculative'} asset with ${Math.random() > 0.5 ? 'developing' : 'emerging'} ecosystem adoption.
-
-### Market Structure
-- **Liquidity**: ${Math.random() > 0.7 ? 'Moderate' : Math.random() > 0.4 ? 'Limited' : 'Very thin'} across exchanges
-- **24h Volume**: Fluctuating between $${(Math.random() * 10).toFixed(2)}M and $${(Math.random() * 20 + 10).toFixed(2)}M
-
-### Risk Assessment
-When analyzing smaller market cap tokens, consider:
-- Higher volatility and liquidity risks
-- Project development sustainability
-- Technological differentiators
-- Team experience and commitment
-
-I recommend conducting thorough research on this project's fundamentals before considering any investment decisions. This includes reviewing documentation, community engagement, and development activity.
-
-This analysis represents educational information based on limited available data, not financial advice.`;
-  };
-  
-  // Get general response for non-token queries
-  const getGeneralResponse = (message) => {
-    const lowerMessage = message.toLowerCase();
-    
-    if (lowerMessage.includes('help') || lowerMessage.includes('what can you do')) {
-      return `## How I Can Help You
-
-I'm an Enhanced Crypto Analyst equipped to provide detailed analysis of cryptocurrencies and tokens. Here's what I can do:
-
-- **Token Analysis**: Ask me to analyze any cryptocurrency (e.g., "Analyze Bitcoin")
-- **Technical Analysis**: Request technical indicators and chart patterns
-- **Fundamental Assessment**: Explore tokenomics, utility, and adoption metrics
-- **Risk Evaluation**: Get insights on potential risks and considerations
-- **Market Comparisons**: Compare different cryptocurrencies
-
-Simply mention a cryptocurrency name in your message, and I'll provide comprehensive analysis based on available data.`;
-    }
-    
-    if (lowerMessage.includes('market') || lowerMessage.includes('outlook')) {
-      return `## Current Market Outlook
-
-**Executive Summary**: The cryptocurrency market is currently in a neutral phase with mixed signals across different sectors. Bitcoin dominance stands at approximately 48%, suggesting a balanced distribution of capital across the ecosystem.
-
-### Key Metrics
-- **Total Market Cap**: $2.56 trillion
-- **24h Volume**: $124.8 billion
-- **BTC Dominance**: 48.2%
-- **ETH Dominance**: 19.8%
-
-### Sector Performance (7-Day)
-- **Layer-1**: +2.8%
-- **DeFi**: -1.2%
-- **Gaming/Metaverse**: +5.4%
-- **Privacy**: -0.8%
-
-### Notable Trends
-The market is currently showing rotation from established Layer-1 protocols into gaming and metaverse projects. DeFi TVL has remained relatively stable despite token price volatility.
-
-This analysis represents educational information based on available data, not financial advice.`;
-    }
-    
-    // Default response
-    return `I'm your Enhanced Crypto Analyst, specialized in providing comprehensive analysis of cryptocurrencies and tokens. To get started, simply mention a specific cryptocurrency you'd like me to analyze (e.g., "Analyze Bitcoin" or "What do you think about Ethereum?").
-
-I can provide technical analysis, fundamental assessment, risk evaluation, and market comparisons for any cryptocurrency in my database. What would you like to explore today?`;
-  };
-  
   // Format message content with markdown-like formatting
   const formatMessageContent = (content) => {
-    // Handle markdown headers
-    content = content.replace(/^## (.*$)/gm, '<h3>$1</h3>');
-    content = content.replace(/^### (.*$)/gm, '<h4>$1</h4>');
+    if (!content) return '';
     
-    // Handle bold text
-    content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Simple regex-based markdown formatting
+    let formattedContent = content;
     
-    // Handle lists
-    content = content.replace(/^\s*[-*]\s+(.*$)/gm, '<li>$1</li>');
+    // Format headers
+    formattedContent = formattedContent.replace(/^## (.*$)/gm, '<h3>$1</h3>');
+    formattedContent = formattedContent.replace(/^### (.*$)/gm, '<h4>$1</h4>');
     
-    // Return formatted content
-    return <div dangerouslySetInnerHTML={{ __html: content }} />;
-  };
-  
-  // Render quick action buttons
-  const renderQuickActions = () => {
-    // Use suggestions or default to top tokens
-    const tokens = cryptoSuggestions.length > 0 ? cryptoSuggestions : ['BTC', 'ETH', 'SOL'];
+    // Format bold
+    formattedContent = formattedContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     
-    return (
-      <QuickActionsContainer>
-        {/* Quick token analysis */}
-        <QuickActionButton
-          color={character?.color}
-          onClick={() => handleQuickAnalysis(tokens[0])}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          <FaSearch /> Analyze {tokens[0]}
-        </QuickActionButton>
-        
-        {/* Technical analysis */}
-        <QuickActionButton
-          color={character?.color}
-          onClick={() => handleQuickAnalysis(tokens[0], 'technical')}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          <FaChartLine /> Technical {tokens[0]}
-        </QuickActionButton>
-        
-        {/* Risk analysis */}
-        <QuickActionButton
-          color={character?.color}
-          onClick={() => handleQuickAnalysis(tokens[1] || 'ETH', 'risk')}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          <FaShieldAlt /> Risk {tokens[1] || 'ETH'}
-        </QuickActionButton>
-        
-        {/* Comparison */}
-        <QuickActionButton
-          color={character?.color}
-          onClick={() => handleQuickAnalysis(tokens[0], 'comparison')}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          <FaExchangeAlt /> Compare Tokens
-        </QuickActionButton>
-      </QuickActionsContainer>
-    );
+    // Format lists
+    formattedContent = formattedContent.replace(/^\s*[-*]\s+(.*$)/gm, '<li>$1</li>');
+    
+    // Replace newlines with breaks for better spacing
+    formattedContent = formattedContent.replace(/\n/g, '<br/>');
+    
+    // Clean up list formatting
+    formattedContent = formattedContent.replace(/<\/li><br\/><li>/g, '</li><li>');
+    
+    return <div dangerouslySetInnerHTML={{ __html: formattedContent }} />;
   };
   
   return (
@@ -1055,23 +807,6 @@ I can provide technical analysis, fundamental assessment, risk evaluation, and m
         color={character?.color}
       >
         <MessagesContainer ref={messagesContainerRef} color={character?.color}>
-          {messages.length === 1 && (
-            <WelcomeMessage
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.3 }}
-            >
-              <WelcomeTitle gradient={character?.gradient} color={character?.color}>
-                Welcome to Enhanced {character?.name}
-              </WelcomeTitle>
-              <WelcomeDescription>
-                This interface combines real API functionality when available with fallback responses
-                when needed. You're currently {apiStatus.openai || apiStatus.coingecko ? 'connected to' : 'disconnected from'} APIs.
-                Try asking for analysis of Bitcoin, Ethereum, or Solana.
-              </WelcomeDescription>
-            </WelcomeMessage>
-          )}
-          
           {messages.map((message) => (
             <MessageBubble
               key={message.id}
@@ -1094,11 +829,11 @@ I can provide technical analysis, fundamental assessment, risk evaluation, and m
             </MessageBubble>
           ))}
           
-          {/* Error message if API failed */}
+          {/* Error message */}
           {error && (
             <ErrorMessage>
-              <h4>{error.title}</h4>
-              <p>{error.message}</p>
+              <h4>API Error</h4>
+              <p>{error.message || "An unknown error occurred"}</p>
             </ErrorMessage>
           )}
           
@@ -1130,7 +865,7 @@ I can provide technical analysis, fundamental assessment, risk evaluation, and m
           <div ref={messagesEndRef} />
         </MessagesContainer>
         
-        {/* Scroll to bottom button when needed */}
+        {/* Scroll to bottom button */}
         <AnimatePresence>
           {!shouldAutoScroll && (
             <ScrollToBottomButton
@@ -1153,17 +888,17 @@ I can provide technical analysis, fundamental assessment, risk evaluation, and m
           <InputWrapper>
             <InputField
               type="text"
-              placeholder="Ask for analysis of any cryptocurrency..."
+              placeholder={`Ask about ${activeToken} or any other cryptocurrency...`}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
               color={character?.color}
-              disabled={isTyping}
+              disabled={isProcessing}
             />
             
             <SendButton
               onClick={handleSendMessage}
-              disabled={!input.trim() || isTyping}
+              disabled={!input.trim() || isTyping || isProcessing}
               gradient={character?.gradient}
               color={character?.color}
               whileHover={{ scale: 1.1 }}
@@ -1173,7 +908,44 @@ I can provide technical analysis, fundamental assessment, risk evaluation, and m
             </SendButton>
           </InputWrapper>
           
-          {renderQuickActions()}
+          {/* Quick action buttons */}
+          <QuickActionsContainer>
+            <QuickActionButton
+              color={character?.color}
+              onClick={() => handleQuickAnalysis('comprehensive')}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <FaSearch /> Analyze {activeToken}
+            </QuickActionButton>
+            
+            <QuickActionButton
+              color={character?.color}
+              onClick={() => handleQuickAnalysis('technical')}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <FaChartLine /> Technical {activeToken}
+            </QuickActionButton>
+            
+            <QuickActionButton
+              color={character?.color}
+              onClick={() => handleQuickAnalysis('risk')}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <FaShieldAlt /> Risk {activeToken}
+            </QuickActionButton>
+            
+            <QuickActionButton
+              color={character?.color}
+              onClick={() => handleQuickAnalysis('comparison')}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <FaExchangeAlt /> Compare Tokens
+            </QuickActionButton>
+          </QuickActionsContainer>
         </ChatInputArea>
       </ChatInterfaceWrapper>
     </ChatContainer>

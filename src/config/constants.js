@@ -1,6 +1,6 @@
 // src/config/constants.js
 // Replace this with your actual OpenAI API key
-export const OPENAI_API_KEY = "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";
+export const OPENAI_API_KEY = "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";
 
 // Character-specific configuration
 export const CHARACTER_CONFIG = {
