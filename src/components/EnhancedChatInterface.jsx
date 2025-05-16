@@ -14,9 +14,10 @@ import {
   FaChartLine,
   FaExchangeAlt,
   FaShieldAlt,
-  FaSearch
+  FaSearch,
+  FaUsers
 } from 'react-icons/fa';
-import { useCharacter } from '../context/CharacterContext';
+import { useCharacter } from '../context/CharacterContextFix';
 import { processNovaEnhancedMessage } from '../services/novaAIService';
 import useCryptoAnalysis from '../hooks/useCryptoAnalysis';
 import { 
@@ -331,25 +332,25 @@ const EnhancedChatInterface = () => {
     const securityCheck = () => {
       // Step 1: Check wallet connection
       if (!walletConnected) {
-        console.log("Access denied: Wallet not connected");
-        setIsAuthorized(false);
-        return;
-      }
+  console.log("Access denied: Wallet not connected");
+  setIsAuthorized(false);
+  return;
+}
       
       // Step 2: Check if character exists
-      const characterData = getCharacter(id);
-      if (!characterData) {
-        console.log("Access denied: Character not found");
-        setIsAuthorized(false);
-        return;
-      }
+     const characterData = getCharacter(id);
+if (!characterData) {
+  console.log("Access denied: Character not found");
+  setIsAuthorized(false);
+  return;
+}
       
       // Step 3: Check if character is unlocked
-      if (!isUnlocked(id)) {
-        console.log("Access denied: Character not unlocked");
-        setIsAuthorized(false);
-        return;
-      }
+    if (!isUnlocked(id)) {
+  console.log("Access denied: Character not unlocked");
+  setIsAuthorized(false);
+  return;
+}
       
       // All checks passed
       setCharacter(characterData);
@@ -403,31 +404,29 @@ const EnhancedChatInterface = () => {
     }
   }, [messages, isTyping, shouldAutoScroll]);
   
-  
-  
   const [apiError, setApiError] = useState(null);
-const [errorType, setErrorType] = useState(null);
+  const [errorType, setErrorType] = useState(null);
 
-// Process message with Enhanced Nova AI
+  // Process message with Enhanced Nova AI
   const handleSendMessage = async () => {
-  if (!input.trim() || !character || !isAuthorized || isProcessing) return;
-  
-  setIsProcessing(true);
-  setApiError(null);
-  setErrorType(null);
-  
-  // Add user message
-  const userMessage = {
-    id: Date.now(),
-    content: input.trim(),
-    sender: 'You',
-    isUser: true,
-    time: formatTime()
-  };
+    if (!input.trim() || !character || !isAuthorized || isProcessing) return;
     
-      setMessages(prev => [...prev, userMessage]);
-  setInput('');
-  setIsTyping(true);
+    setIsProcessing(true);
+    setApiError(null);
+    setErrorType(null);
+    
+    // Add user message
+    const userMessage = {
+      id: Date.now(),
+      content: input.trim(),
+      sender: 'You',
+      isUser: true,
+      time: formatTime()
+    };
+    
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsTyping(true);
     
     // Format chat history for AI
     const chatHistory = messages.map(msg => ({
@@ -437,21 +436,23 @@ const [errorType, setErrorType] = useState(null);
     
     try {
       // Process with enhanced Nova AI
-const aiResponse = await processNovaEnhancedMessage(input, chatHistory);
+      const aiResponse = await processNovaEnhancedMessage(input, chatHistory);
 
       // Add response message
-    const novaMessage = {
-      id: Date.now() + 1,
-      content: aiResponse.content,
-      sender: 'Nova',
-      isUser: false,
-      time: formatTime(),
-      analysisType: aiResponse.analysisType,
-      token: aiResponse.token,
-      rawData: aiResponse.rawData
-    };
-    
-    setMessages(prev => [...prev, novaMessage]);
+      const novaMessage = {
+        id: Date.now() + 1,
+        content: aiResponse.content,
+        sender: 'Nova',
+        isUser: false,
+        time: formatTime(),
+        analysisType: aiResponse.analysisType,
+        token: aiResponse.token,
+        contractAddress: aiResponse.contractAddress,
+        blockchain: aiResponse.blockchain,
+        rawData: aiResponse.rawData
+      };
+      
+      setMessages(prev => [...prev, novaMessage]);
       
       // If we have token data, update suggestions for quick actions
       if (aiResponse.token) {
@@ -465,28 +466,28 @@ const aiResponse = await processNovaEnhancedMessage(input, chatHistory);
     } catch (error) {
       console.error('Error generating Nova response:', error);
 
-       // Determine error type
-    if (error.message?.includes('rate limit')) {
-      setErrorType('rateLimit');
-    } else if (error.message?.includes('auth') || error.message?.includes('key')) {
-      setErrorType('auth');
-    } else if (error.message?.includes('not found') || error.message?.includes('parsing')) {
-      setErrorType('data');
-    } else {
-      setErrorType('api');
-    }
-    
-    setApiError(error);
+      // Determine error type
+      if (error.message?.includes('rate limit')) {
+        setErrorType('rateLimit');
+      } else if (error.message?.includes('auth') || error.message?.includes('key')) {
+        setErrorType('auth');
+      } else if (error.message?.includes('not found') || error.message?.includes('parsing')) {
+        setErrorType('data');
+      } else {
+        setErrorType('api');
+      }
       
-       // Add error message
-    const errorMessage = {
-      id: Date.now() + 1,
-      content: `I'm sorry, I encountered an issue while analyzing your request.`,
-      sender: 'Nova',
-      isUser: false,
-      time: formatTime(),
-      error: true
-    };
+      setApiError(error);
+      
+      // Add error message
+      const errorMessage = {
+        id: Date.now() + 1,
+        content: `I'm sorry, I encountered an issue while analyzing your request.`,
+        sender: 'Nova',
+        isUser: false,
+        time: formatTime(),
+        error: true
+      };
       
       setMessages(prev => [...prev, errorMessage]);
     } finally {
@@ -526,6 +527,33 @@ const aiResponse = await processNovaEnhancedMessage(input, chatHistory);
       handleSendMessage();
     }, 100);
   };
+
+  // Handler for contract-specific quick actions
+  const handleContractQuickAction = (address, actionType) => {
+    if (isProcessing) return;
+    
+    // Generate appropriate prompt based on action type
+    let prompt = '';
+    switch (actionType) {
+      case 'price':
+        prompt = `Show me the price chart and technical analysis for contract ${address}`;
+        break;
+      case 'holders':
+        prompt = `Analyze the holder distribution for contract ${address}`;
+        break;
+      case 'security':
+        prompt = `Perform a security check on contract ${address}`;
+        break;
+      default:
+        prompt = `Tell me more about contract ${address}`;
+    }
+    
+    // Set input and send message
+    setInput(prompt);
+    setTimeout(() => {
+      handleSendMessage();
+    }, 100);
+  };
   
   // Handle suggestions for tokens
   const generateSuggestions = () => {
@@ -535,7 +563,7 @@ const aiResponse = await processNovaEnhancedMessage(input, chatHistory);
     // Get tokens mentioned in the conversation
     const extractTokens = (content) => {
       const tokens = [];
-      const tokenRegex = /\b(BTC|ETH|SOL|MATIC|AVAX|DOT|ADA|BNB|XRP|DOGE)\b/gi;
+      const tokenRegex = /\b(BTC|ETH|SOL|MATIC|AVAX|DOT|ADA|BNB|XRP|DOGE|SHIB|LINK|LTC)\b/gi;
       let match;
       
       while ((match = tokenRegex.exec(content)) !== null) {
@@ -685,52 +713,94 @@ const aiResponse = await processNovaEnhancedMessage(input, chatHistory);
                   {message.sender}
                 </SenderName>
               </MessageSender>
-              <MessageContent color={character?.color}>
-                {/* Handle markdown-like formatting for Nova's responses */}
-                {!message.isUser 
-                  ? formatMessageWithMarkdown(message.content)
-                  : message.content
-                }
-              </MessageContent>
+              
+              {message.analysisType === 'tokenContract' ? (
+                <TokenContractAnalysis 
+                  contractAddress={message.contractAddress}
+                  blockchain={message.blockchain}
+                  content={message.content}
+                  color={character?.color}
+                />
+              ) : (
+                <MessageContent color={character?.color}>
+                  {/* Handle markdown-like formatting for Nova's responses */}
+                  {!message.isUser 
+                    ? formatMessageWithMarkdown(message.content)
+                    : message.content
+                  }
+                </MessageContent>
+              )}
+
+              {/* Add quick actions for contract analysis */}
+              {message.analysisType === 'tokenContract' && (
+                <QuickActionsContainer>
+                  <QuickActionButton
+                    color={character?.color}
+                    onClick={() => handleContractQuickAction(message.contractAddress, 'price')}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <FaChartLine /> Price Chart
+                  </QuickActionButton>
+                  
+                  <QuickActionButton
+                    color={character?.color}
+                    onClick={() => handleContractQuickAction(message.contractAddress, 'holders')}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <FaUsers /> Holder Analysis
+                  </QuickActionButton>
+                  
+                  <QuickActionButton
+                    color={character?.color}
+                    onClick={() => handleContractQuickAction(message.contractAddress, 'security')}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <FaShieldAlt /> Security Check
+                  </QuickActionButton>
+                </QuickActionsContainer>
+              )}
             </MessageBubble>
           ))}
 
-           {/* Add error messages */}
-        {apiError && errorType === 'api' && (
-          <ApiErrorMessage 
-            error={apiError} 
-            onRetry={() => {
-              if (input.trim()) handleSendMessage();
-            }} 
-          />
-        )}
+          {/* Add error messages */}
+          {apiError && errorType === 'api' && (
+            <ApiErrorMessage 
+              error={apiError} 
+              onRetry={() => {
+                if (input.trim()) handleSendMessage();
+              }} 
+            />
+          )}
 
-         {apiError && errorType === 'data' && (
-          <DataErrorMessage 
-            error={apiError} 
-            onRetry={() => {
-              if (input.trim()) handleSendMessage();
-            }} 
-          />
-        )}
-        
-        {apiError && errorType === 'rateLimit' && (
-          <RateLimitErrorMessage 
-            retryTime={30000} 
-            onRetry={() => {
-              if (input.trim()) handleSendMessage();
-            }} 
-          />
-        )}
-        
-        {apiError && errorType === 'auth' && (
-          <AuthErrorMessage 
-            error={apiError} 
-            onRetry={() => {
-              if (input.trim()) handleSendMessage();
-            }} 
-          />
-        )}
+          {apiError && errorType === 'data' && (
+            <DataErrorMessage 
+              error={apiError} 
+              onRetry={() => {
+                if (input.trim()) handleSendMessage();
+              }} 
+            />
+          )}
+          
+          {apiError && errorType === 'rateLimit' && (
+            <RateLimitErrorMessage 
+              retryTime={30000} 
+              onRetry={() => {
+                if (input.trim()) handleSendMessage();
+              }} 
+            />
+          )}
+          
+          {apiError && errorType === 'auth' && (
+            <AuthErrorMessage 
+              error={apiError} 
+              onRetry={() => {
+                if (input.trim()) handleSendMessage();
+              }} 
+            />
+          )}
           
           {isTyping && (
             <TypingIndicator
@@ -788,6 +858,57 @@ const aiResponse = await processNovaEnhancedMessage(input, chatHistory);
       </ChatInterfaceWrapper>
     </ChatContainer>
   );
+};
+
+// Token Contract Analysis Component
+const TokenContractAnalysis = ({ contractAddress, blockchain, content, color }) => {
+  // Format the content to enhance the display
+  const formattedContent = formatTokenAnalysisContent(content);
+  
+  return (
+    <div className="token-analysis-container">
+      <div 
+        style={{ 
+          borderLeft: `4px solid ${color || '#FF9933'}`,
+          padding: '8px 16px',
+          marginBottom: '16px',
+          borderRadius: '4px',
+          background: 'rgba(255, 255, 255, 0.05)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+          <strong style={{ color: color || '#FF9933' }}>Contract Analysis</strong>
+          <div 
+            style={{ 
+              marginLeft: '12px', 
+              fontSize: '0.8rem', 
+              padding: '2px 8px', 
+              borderRadius: '4px',
+              background: 'rgba(255, 255, 255, 0.1)',
+              color: 'rgba(255, 255, 255, 0.9)'
+            }}
+          >
+            {blockchain}
+          </div>
+        </div>
+        <div style={{ fontSize: '0.9rem', color: 'rgba(255, 255, 255, 0.7)' }}>
+          {contractAddress}
+        </div>
+      </div>
+      
+      <MessageContent color={color}>
+        {/* Render the formatted token analysis */}
+        {formattedContent}
+      </MessageContent>
+    </div>
+  );
+};
+
+// Helper function to enhance the display of token analysis
+const formatTokenAnalysisContent = (content) => {
+  // We'll keep this simple - just return the content for now
+  // In a more advanced implementation, you could parse the sections and format them nicely
+  return <div dangerouslySetInnerHTML={{ __html: content.replace(/\n/g, '<br>') }} />;
 };
 
 // Helper function to format message with markdown-like syntax

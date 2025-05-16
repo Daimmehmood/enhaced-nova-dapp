@@ -5,7 +5,7 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { FaRobot, FaChartLine, FaSearch, FaExchangeAlt, FaArrowRight } from 'react-icons/fa';
-import { useCharacter } from '../context/CharacterContext';
+import { useCharacter } from '../context/CharacterContextFix';
 import novaImage from '../assets/characters/nova/nova4.jpg';
 
 const CardContainer = styled(motion.div)`

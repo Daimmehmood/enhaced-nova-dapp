@@ -390,7 +390,7 @@ Structure your response with clear sections for easy reading. The user's origina
       { role: "user", content: userPrompt }
     ], {
       temperature: 0.3,
-      maxTokens: 1500
+      maxTokens: 15000
     });
     
     return {

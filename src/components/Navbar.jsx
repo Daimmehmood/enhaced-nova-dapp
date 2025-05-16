@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaBars, FaTimes, FaSignOutAlt } from 'react-icons/fa';
-import { useCharacter } from '../context/CharacterContext';
+import { useCharacter } from '../context/CharacterContextFix';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 

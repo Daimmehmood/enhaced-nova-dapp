@@ -12,7 +12,7 @@ import {
   FaLock,
   FaArrowDown
 } from 'react-icons/fa';
-import { useCharacter } from '../context/CharacterContext';
+import { useCharacter } from '../context/CharacterContextFix';
 import { processNovaMessage, detectContractAddress, analyzeContractAddress } from '../utils/aiUtils';
 
 const ChatContainer = styled.div`

@@ -1,16 +1,14 @@
-// src/components/HomePage.jsx
+// Updated HomePage.jsx with Developer Tools link
 import React from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { FaRobot, FaChartLine, FaShieldAlt, FaLightbulb, FaRocket } from 'react-icons/fa';
+import { FaRobot, FaChartLine, FaShieldAlt, FaLightbulb, FaRocket, FaStar, FaBolt, FaTools } from 'react-icons/fa';
 import novaImage from '../assets/characters/nova/nova4.jpg';
 import lunaImage from '../assets/characters/luna/Luna3.jpg';
 import vegaImage from '../assets/characters/vega/Vega3.jpg';
 import emberImage from '../assets/characters/ember/Ember.jpg';
 import astraImage from '../assets/characters/astra/Astra2.jpg';
-import { FaStar, FaBolt } from 'react-icons/fa';
-
 
 const HomeContainer = styled.div`
   min-height: 100vh;
@@ -345,7 +343,30 @@ const EnhancedNovaSection = styled.section`
   }
 `;
 
-
+// Add a developer tools button that stands out as a helper element
+const DevToolsButton = styled(motion.button)`
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  background: rgba(255, 107, 26, 0.9);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-family: ${({ theme }) => theme.fonts.heading};
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  
+  &:hover {
+    background: linear-gradient(45deg, #FF9933 0%, #FFCC33 100%);
+    transform: translateY(-3px);
+  }
+`;
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -576,6 +597,18 @@ const HomePage = () => {
           </StyledButton>
         </SectionCTA>
       </AgentsSection>
+      
+      {/* Developer Tools Button */}
+      <DevToolsButton
+        onClick={() => navigate('/dev-tools')}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 1 }}
+      >
+        <FaTools /> Developer Tools
+      </DevToolsButton>
     </HomeContainer>
   );
 };

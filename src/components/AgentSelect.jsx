@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { useCharacter } from '../context/CharacterContext';
+import { useCharacter } from '../context/CharacterContextFix';
 import { FaLock, FaUnlock, FaRocket } from 'react-icons/fa';
 
 const PageContainer = styled.div`
