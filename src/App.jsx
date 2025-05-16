@@ -11,7 +11,6 @@ import Layout from './components/Layout';
 import HomePage from './components/HomePage';
 import AgentSelect from './components/AgentSelect';
 import ChatInterface from './components/ChatInterface';
-import EnhancedChatInterface from './components/EnhancedChatInterface';
 import Dashboard from './components/Dashboard';
 import CharacterTrainer from './components/admin/CharacterTrainer';
 import EnhancedSimplifiedChat from './components/EnhancedSimplifiedChat';
@@ -35,7 +34,6 @@ function App() {
                 <Route path="/enhanced/:id" element={<EnhancedSimplifiedChat />} />
                 <Route path="/debug-enhanced/:id" element={<DebugEnhancedChat />} />
                 <Route path="/dev-tools" element={<DeveloperTools />} />
-                <Route path="/original-enhanced/:id" element={<EnhancedChatInterface />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/admin/train/:id" element={<CharacterTrainer />} />
               </Routes>

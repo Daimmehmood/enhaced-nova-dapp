@@ -77,13 +77,15 @@ const processWithStandardAI = async (userMessage, chatHistory = [], isFallback =
   try {
     // Format the conversation history for the API
     const messages = [
-      { role: "system", content: generateNovaSystemPrompt(isFallback) },
-      ...chatHistory.slice(-5).map(msg => ({  // Use only last 5 messages for context
-        role: msg.isUser ? "user" : "assistant",
-        content: msg.content
-      })),
-      { role: "user", content: userMessage }
-    ];
+  { role: "system", content: generateNovaSystemPrompt(isFallback) },
+  ...chatHistory.slice(-5)
+    .filter(msg => msg.content !== null && msg.content !== undefined)
+    .map(msg => ({  // Use only last 5 messages for context
+      role: msg.isUser ? "user" : "assistant",
+      content: msg.content || "" // Ensure empty string instead of null/undefined
+    })),
+  { role: "user", content: userMessage || "" }
+];
     
     // Use the configuration to make the API request
     const data = await OPENAI_CONFIG.createChatCompletion(messages, {

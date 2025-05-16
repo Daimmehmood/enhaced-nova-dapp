@@ -4,7 +4,7 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useCharacter } from '../context/CharacterContextFix';
-import { FaLock, FaUnlock, FaRocket } from 'react-icons/fa';
+import { FaLock, FaUnlock, FaRocket, FaStar, FaBolt } from 'react-icons/fa';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -205,6 +205,23 @@ const AgentStatusIndicator = styled.div`
   box-shadow: ${props => props.unlocked ? 
     '0 0 15px rgba(78, 255, 159, 0.7)' : 
     '0 0 10px rgba(0, 0, 0, 0.5)'};
+`;
+
+const NewFeatureBadge = styled.div`
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  background: linear-gradient(45deg, #FF9933 0%, #FFCC33 100%);
+  color: black;
+  font-weight: bold;
+  padding: 0.25rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  z-index: 3;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 `;
 
 const AgentInfo = styled.div`
@@ -485,8 +502,22 @@ const AgentSelect = () => {
     getUnlockProgress 
   } = useCharacter();
   
+  // Create a modified version of characters with enhanced Nova
+  const modifiedCharacters = characters.map(char => {
+    if (char.id === 'nova') {
+      return {
+        ...char,
+        title: 'Advanced Crypto Analyst',
+        description: 'Nova 2.0 provides comprehensive crypto analysis with real-time market data, advanced price metrics, and AI-powered insights across any blockchain.',
+        enhanced: true,
+        specialties: ['Market Data Analysis', 'AI-Powered Insights', 'Cross-Chain Analytics']
+      };
+    }
+    return char;
+  });
+  
   const [selectedCharacter, setSelectedCharacter] = useState(
-    characters.find(char => char.id === activeCharacter) || characters[0]
+    modifiedCharacters.find(char => char.id === activeCharacter) || modifiedCharacters[0]
   );
   
   const handleCharacterClick = (character) => {
@@ -496,7 +527,12 @@ const AgentSelect = () => {
   const handleStartChat = () => {
     if (isUnlocked(selectedCharacter.id)) {
       setActiveCharacter(selectedCharacter.id);
-      navigate(`/character/${selectedCharacter.id}`);
+      // For Nova, go to enhanced interface
+      if (selectedCharacter.id === 'nova') {
+        navigate(`/enhanced/${selectedCharacter.id}`);
+      } else {
+        navigate(`/character/${selectedCharacter.id}`);
+      }
     }
   };
   
@@ -559,7 +595,7 @@ const AgentSelect = () => {
       </PageHeader>
       
       <AgentsGrid>
-        {characters.map((character, index) => {
+        {modifiedCharacters.map((character, index) => {
           const progress = getUnlockProgress(character.id);
           const unlocked = isUnlocked(character.id);
           
@@ -580,6 +616,12 @@ const AgentSelect = () => {
                 <img src={character.image || '/assets/NOVA ALL CHARACTER/NOVA/nova4.jpg'} alt={character.name} />
               </AgentImageContainer>
               
+              {character.enhanced && unlocked && (
+                <NewFeatureBadge>
+                  <FaBolt /> ENHANCED
+                </NewFeatureBadge>
+              )}
+              
               <AgentStatusIndicator unlocked={unlocked}>
                 {unlocked ? <FaUnlock /> : <FaLock />}
               </AgentStatusIndicator>
@@ -589,7 +631,7 @@ const AgentSelect = () => {
                   color={character.color}
                   gradient={character.gradient}
                 >
-                  {character.name}
+                  {character.name} {character.enhanced ? '2.0' : ''}
                 </AgentName>
                 <AgentTitle>{character.title}</AgentTitle>
                 <AgentDescription>
@@ -670,11 +712,12 @@ const AgentSelect = () => {
               color={selectedCharacter.color}
               gradient={selectedCharacter.gradient}
             >
-              {selectedCharacter.name}
+              {selectedCharacter.name} {selectedCharacter.enhanced ? '2.0' : ''}
             </SelectedAgentName>
             <SelectedAgentTitle>{selectedCharacter.title}</SelectedAgentTitle>
             <SelectedAgentDescription>
               {selectedCharacter.description}
+              {selectedCharacter.enhanced && ` This enhanced version connects to real-time market data sources including CoinGecko and DexScreener, providing comprehensive analytics for any token across multiple blockchains.`}
             </SelectedAgentDescription>
             
             {selectedCharacter.specialties && (
@@ -703,7 +746,7 @@ const AgentSelect = () => {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.98 }}
               >
-                {isCharacterUnlocked ? 'Start Session' : 'Locked'}
+                {selectedCharacter.enhanced ? 'Start Enhanced Session' : 'Start Session'}
               </Button>
               
               {!isCharacterUnlocked && (
