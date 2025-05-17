@@ -434,12 +434,38 @@ const EnhancedSimplifiedChat = () => {
   }, []);
   
   // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    if (shouldAutoScroll && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages, isTyping, shouldAutoScroll]);
-  
+useEffect(() => {
+  if (shouldAutoScroll && messagesEndRef.current) {
+    // Use requestAnimationFrame to ensure DOM is ready before scrolling
+    const scrollTimer = setTimeout(() => {
+      requestAnimationFrame(() => {
+        messagesEndRef.current.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'end'
+        });
+      });
+    }, 100);
+    
+    return () => clearTimeout(scrollTimer);
+  }
+}, [messages, isTyping, shouldAutoScroll]);
+
+// Add these handlers for the input field
+const handleInputFocus = () => {
+  // Temporarily disable auto-scrolling when input is focused
+  setShouldAutoScroll(false);
+};
+
+const handleInputBlur = () => {
+  const container = messagesContainerRef.current;
+  if (container) {
+    // Only re-enable auto-scroll if we're already near the bottom
+    const isNearBottom = 
+      container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    setShouldAutoScroll(isNearBottom);
+  }
+};
+
   // Add scroll event listener
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -464,38 +490,43 @@ const EnhancedSimplifiedChat = () => {
   };
   
   // Process user message using OpenAI
-  const processWithOpenAI = async (message, chatHistory) => {
-    try {
-      // Check if OpenAI API is available
-      if (!OPENAI_CONFIG.apiKey) {
-        throw new Error("OpenAI API key not configured");
-      }
-      
-      // Format messages for OpenAI
-      const messages = [
-        { 
-          role: "system", 
-          content: `You are Nova, an advanced cryptocurrency analyst AI with expertise in technical analysis, fundamentals, and market behavior. Your analysis is data-driven, precise, and insightful. Current date: ${new Date().toISOString().split('T')[0]}`
-        },
-        ...chatHistory.slice(-5).map(msg => ({
+  const processWithOpenAI = async (message, chatHistory = []) => {
+  // If no OpenAI API key, return default response without throwing
+  if (!OPENAI_CONFIG.apiKey) {
+    console.log('OpenAI API key not available, using fallback');
+    return getDefaultResponse(message);
+  }
+  
+  try {
+    // Format the conversation history for the API
+    const messages = [
+      { 
+        role: "system", 
+        content: `You are Nova, an advanced cryptocurrency analyst AI with expertise in technical analysis, fundamentals, and market behavior. Your analysis is data-driven, precise, and insightful. Current date: ${new Date().toISOString().split('T')[0]}`
+      },
+      ...chatHistory.slice(-5)
+        .filter(msg => msg.content !== null && msg.content !== undefined)
+        .map(msg => ({
           role: msg.isUser ? "user" : "assistant",
-          content: msg.content
+          content: msg.content || "" 
         })),
-        { role: "user", content: message }
-      ];
-      
-      // Call OpenAI API
-      const response = await OPENAI_CONFIG.createChatCompletion(messages, {
-        temperature: 0.3,
-        maxTokens: 800
-      });
-      
-      return response.choices[0].message.content;
-    } catch (error) {
-      console.error("Error with OpenAI:", error);
-      throw error;
-    }
-  };
+      { role: "user", content: message || "" }
+    ];
+    
+    // Use the configuration to make the API request
+    const response = await OPENAI_CONFIG.createChatCompletion(messages, {
+      temperature: 0.3,
+      maxTokens: 700
+    });
+
+    // Return the AI response
+    return response.choices[0].message.content;
+  } catch (error) {
+    // Return default response instead of throwing
+    console.log('OpenAI API error, using fallback response:', error);
+    return getDefaultResponse(message);
+  }
+};
   
   // Extract token from message
   const extractTokenFromMessage = (message) => {
@@ -524,94 +555,112 @@ const EnhancedSimplifiedChat = () => {
   
   // Send message handler
   const handleSendMessage = async () => {
-    if (!input.trim() || isProcessing) return;
+  if (!input.trim() || isProcessing) return;
+  
+  setIsProcessing(true);
+  setError(null);
+  
+  // Add user message
+  const userMessage = {
+    id: Date.now(),
+    content: input.trim(),
+    sender: 'You',
+    isUser: true,
+    time: formatTime()
+  };
+  
+  setMessages(prev => [...prev, userMessage]);
+  setInput('');
+  setIsTyping(true);
+  
+  // Format chat history for AI
+  const chatHistory = messages.map(msg => ({
+    content: msg.content,
+    isUser: msg.isUser
+  }));
+  
+  // For simplicity, we'll fully wrap all the logic in a try-catch
+  // and use a generic fallback response if anything fails
+  try {
+    let responseContent = '';
     
-    setIsProcessing(true);
-    setError(null);
+    // Extract potential token from message
+    const token = extractTokenFromMessage(input);
+    if (token) {
+      setActiveToken(token.toUpperCase());
+    }
     
-    // Add user message
-    const userMessage = {
-      id: Date.now(),
-      content: input.trim(),
-      sender: 'You',
-      isUser: true,
-      time: formatTime()
-    };
-    
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setIsTyping(true);
-    
-    // Format chat history for AI
-    const chatHistory = messages.map(msg => ({
-      content: msg.content,
-      isUser: msg.isUser
-    }));
-    
-    try {
-      let responseContent;
-      
-      // Extract potential token from message
-      const token = extractTokenFromMessage(input);
-      if (token) {
-        setActiveToken(token.toUpperCase());
-      }
-      
-      // Try to process with OpenAI if available
-      if (apiStatus.openai) {
+    // Simplified logic to avoid any potential throw points
+    if (apiStatus.openai) {
+      try {
+        // Process with OpenAI - wrap in its own try-catch to catch API errors
         responseContent = await processWithOpenAI(input, chatHistory);
-      } else {
-        // Fallback to simplified response
+      } catch (openaiError) {
+        console.log("OpenAI processing failed:", openaiError);
+        // Fallback to token or general response
         if (token) {
-          try {
-            // Try to get token data
-            const tokenData = await getComprehensiveTokenAnalysis(token);
-            responseContent = generateTokenResponse(token, tokenData);
-          } catch (err) {
-            responseContent = `I'd love to analyze ${token}, but I'm currently unable to fetch real-time data. As a crypto analyst, I can tell you that ${token.toUpperCase()} is a significant digital asset that should be evaluated based on market cap, volume, development activity, and use case. Would you like me to discuss general crypto analysis approaches instead?`;
-          }
+          responseContent = `I'd like to analyze ${token.toUpperCase()}, but I'm currently experiencing some technical difficulties with my advanced analysis capabilities. ${token.toUpperCase()} is a digital asset that should be evaluated based on market cap, volume, development activity, and use case. Would you like to discuss basic crypto analysis concepts instead?`;
         } else {
-          // General crypto response
           responseContent = generateGeneralResponse(input);
         }
       }
-      
-      // Add AI response after a slight delay for natural feel
-      setTimeout(() => {
-        const novaResponse = {
-          id: Date.now() + 1,
-          content: responseContent,
-          sender: character?.name || 'Nova',
-          isUser: false,
-          time: formatTime()
-        };
-        
-        setMessages(prev => [...prev, novaResponse]);
-        setIsTyping(false);
-        setIsProcessing(false);
-      }, 1000 + Math.random() * 1000); // Random delay between 1-2s
-      
-    } catch (error) {
-      console.error('Error generating AI response:', error);
-      setError(error);
-      
-      // Add error message
-      setTimeout(() => {
-        const errorMessage = {
-          id: Date.now() + 1,
-          content: `I apologize, but I encountered an issue while processing your request: ${error.message}. Let me know if you'd like to try a different query.`,
-          sender: character?.name || 'Nova',
-          isUser: false,
-          time: formatTime(),
-          error: true
-        };
-        
-        setMessages(prev => [...prev, errorMessage]);
-        setIsTyping(false);
-        setIsProcessing(false);
-      }, 1000);
+    } else {
+      // OpenAI not available, use simple generated responses
+      if (token) {
+        try {
+          // Try to get token data - wrap this in try-catch to avoid any errors
+          const tokenData = await getComprehensiveTokenAnalysis(token).catch(() => null);
+          responseContent = generateTokenResponse(token, tokenData);
+        } catch (tokenError) {
+          console.log("Token data processing failed:", tokenError);
+          responseContent = `I'd love to analyze ${token}, but I'm currently unable to fetch data for it. As a crypto analyst, I can tell you that ${token.toUpperCase()} should be evaluated based on market cap, volume, development activity, and use case. Would you like me to discuss general crypto analysis approaches instead?`;
+        }
+      } else {
+        // General crypto response
+        responseContent = generateGeneralResponse(input);
+      }
     }
-  };
+    
+    // Safety check - if we somehow still have an empty response, use a fallback
+    if (!responseContent) {
+      responseContent = "I understand your interest in cryptocurrency. While I'm experiencing some technical difficulties accessing real-time data, I'd be happy to discuss general concepts in crypto analysis, blockchain technology, or investment strategies. What specifically would you like to explore?";
+    }
+    
+    // Add AI response after a slight delay for natural feel
+    setTimeout(() => {
+      const novaResponse = {
+        id: Date.now() + 1,
+        content: responseContent,
+        sender: character?.name || 'Nova',
+        isUser: false,
+        time: formatTime()
+      };
+      
+      setMessages(prev => [...prev, novaResponse]);
+      setIsTyping(false);
+      setIsProcessing(false);
+    }, 1000 + Math.random() * 1000); // Random delay between 1-2s
+    
+  } catch (error) {
+    // Ultimate fallback if anything in the outer try block fails
+    console.log('Using ultimate fallback due to error:', error);
+    
+    // Add error message that doesn't reveal the technical details
+    setTimeout(() => {
+      const fallbackMessage = {
+        id: Date.now() + 1,
+        content: "I understand your interest in cryptocurrency. While I'm experiencing some technical difficulties with my advanced analysis capabilities, I'd be happy to discuss crypto markets, blockchain technology, or investment strategies in general terms. What would you like to know more about?",
+        sender: character?.name || 'Nova',
+        isUser: false,
+        time: formatTime()
+      };
+      
+      setMessages(prev => [...prev, fallbackMessage]);
+      setIsTyping(false);
+      setIsProcessing(false);
+    }, 1000);
+  }
+};
   
   // Generate token response when APIs fail
   const generateTokenResponse = (token, data) => {
@@ -747,6 +796,18 @@ What would you like to explore today?`;
       handleSendMessage();
     }, 100);
   };
+
+  const getInputPlaceholder = () => {
+  if (isProcessing) {
+    return "Processing your request...";
+  }
+  
+  if (activeToken) {
+    return `Ask about ${activeToken} or any other crypto...`;
+  }
+  
+  return "Ask me about any cryptocurrency...";
+};
   
   // Format message content with markdown-like formatting
   const formatMessageContent = (content) => {
@@ -888,13 +949,13 @@ What would you like to explore today?`;
           <InputWrapper>
             <InputField
               type="text"
-              placeholder={`Ask about ${activeToken} or any other cryptocurrency...`}
+              placeholder={getInputPlaceholder()}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
               color={character?.color}
               disabled={isProcessing}
-            />
+/>
             
             <SendButton
               onClick={handleSendMessage}
